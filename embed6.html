@@ -39,7 +39,6 @@
             position: absolute;
             top: 0; left: 0;
             background: #000;
-            /* pointer-events diubah agar iframe bisa di-klik jika ada kuis */
             pointer-events: auto; 
         }
 
@@ -47,17 +46,16 @@
             position: absolute;
             bottom: 0; left: 0; right: 0;
             background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-            padding: 20px;
+            padding: 15px 20px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             opacity: 0;
             transition: opacity 0.3s ease;
             z-index: 10;
-            pointer-events: none; /* Biarkan klik tembus ke iframe */
+            pointer-events: none; 
         }
 
-        /* Elemen dalam kontrol bisa diklik */
         #controls-overlay > div {
             pointer-events: auto;
         }
@@ -78,7 +76,7 @@
             z-index: 20;
             backdrop-filter: blur(5px);
             overflow-y: auto;
-            padding: 20px;
+            padding: 15px;
         }
 
         #start-overlay.hidden {
@@ -88,10 +86,19 @@
         .btn-icon {
             background: none; border: none; color: white; cursor: pointer;
             transition: transform 0.2s, color 0.2s;
+            padding: 5px; /* Memperbesar area sentuh untuk HP */
         }
         .btn-icon:hover { color: #3b82f6; transform: scale(1.1); }
         .btn-icon:disabled { opacity: 0.3; cursor: not-allowed; }
         
+        /* Animasi peringatan jika tombol next dipaksa klik saat kuis */
+        @keyframes error-pulse {
+            0% { transform: scale(1); color: #ef4444; }
+            50% { transform: scale(1.3); color: #f87171; }
+            100% { transform: scale(1); color: #ef4444; }
+        }
+        .btn-error { animation: error-pulse 0.4s ease-in-out; }
+
         #progress-bar-container {
             position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: rgba(255,255,255,0.2); z-index: 11;
         }
@@ -106,79 +113,73 @@
     <iframe id="slide-frame" sandbox="allow-scripts allow-same-origin"></iframe>
 
     <div id="start-overlay">
-        <h1 id="main-title" class="text-2xl font-bold mb-3 flex items-center gap-2 drop-shadow-lg">
-            <i class="fa-solid fa-play-circle text-blue-500 text-3xl"></i>
+        <!-- Text diubah sedikit agar tidak kebesaran di HP (text-xl md:text-2xl) -->
+        <h1 id="main-title" class="text-xl md:text-2xl font-bold mb-3 flex items-center gap-2 drop-shadow-lg text-center">
+            <i class="fa-solid fa-play-circle text-blue-500 text-2xl md:text-3xl"></i>
             SaaS Video JSON Player
         </h1>
         
-        <div id="setup-panel" class="w-full max-w-lg bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 text-left">
-            <!-- Pilihan Tab Metode Input -->
+        <div id="setup-panel" class="w-full max-w-lg bg-gray-800 p-4 md:p-6 rounded-lg shadow-lg border border-gray-700 text-left">
             <div class="flex border-b border-gray-700 mb-4">
-                <button id="tab-url" class="flex-1 pb-2 font-semibold text-blue-400 border-b-2 border-blue-500 text-center transition">URL / Link</button>
-                <button id="tab-text" class="flex-1 pb-2 font-semibold text-gray-400 text-center transition">Paste Text JSON</button>
-                <button id="tab-file" class="flex-1 pb-2 font-semibold text-gray-400 text-center transition">Upload File</button>
+                <button id="tab-url" class="flex-1 pb-2 font-semibold text-blue-400 border-b-2 border-blue-500 text-center transition text-sm md:text-base">URL / Link</button>
+                <button id="tab-text" class="flex-1 pb-2 font-semibold text-gray-400 text-center transition text-sm md:text-base">Text JSON</button>
+                <button id="tab-file" class="flex-1 pb-2 font-semibold text-gray-400 text-center transition text-sm md:text-base">Upload</button>
             </div>
 
-            <!-- Panel Input URL -->
             <div id="panel-url" class="space-y-3">
                 <label class="block text-xs text-gray-400">Masukkan URL JSON (ImageKit / Hosting Publik):</label>
                 <input type="text" id="json-url-input" class="w-full p-3 rounded bg-gray-900 border border-gray-600 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://ik.imagekit.io/.../data.json">
             </div>
 
-            <!-- Panel Input Text -->
             <div id="panel-text" class="space-y-3 hidden">
                 <label class="block text-xs text-gray-400">Paste kode JSON lengkap di bawah ini:</label>
                 <textarea id="json-text-input" rows="5" class="w-full p-3 rounded bg-gray-900 border border-gray-600 text-white text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder='{"slidesData": [...]}'></textarea>
             </div>
 
-            <!-- Panel Upload File -->
             <div id="panel-file" class="space-y-3 hidden">
                 <label class="block text-xs text-gray-400">Pilih file .json dari perangkat Anda:</label>
                 <input type="file" id="json-file-input" accept=".json" class="w-full p-2 rounded bg-gray-900 border border-gray-600 text-white text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer">
             </div>
 
-            <!-- Pengaturan Rasio Video -->
             <div class="mt-4 pt-3 border-t border-gray-700 flex items-center justify-between">
-                <span class="text-xs text-gray-400">Format Rasio Video:</span>
-                <div class="flex gap-4 text-sm">
-                    <label class="flex items-center gap-1.5 cursor-pointer">
-                        <input type="radio" name="ratio" value="16/9" checked class="accent-blue-500"> Landscape (16:9)
+                <span class="text-xs text-gray-400">Rasio:</span>
+                <div class="flex gap-3 md:gap-4 text-xs md:text-sm">
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="radio" name="ratio" value="16/9" checked class="accent-blue-500"> 16:9
                     </label>
-                    <label class="flex items-center gap-1.5 cursor-pointer">
-                        <input type="radio" name="ratio" value="9/16" class="accent-blue-500"> Portrait (9:16)
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="radio" name="ratio" value="9/16" class="accent-blue-500"> 9:16
                     </label>
                 </div>
             </div>
 
-            <button id="btn-load" class="w-full mt-5 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded transition shadow-lg">
+            <button id="btn-load" class="w-full mt-5 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded transition shadow-lg text-sm md:text-base">
                 Load & Play Video
             </button>
             <p id="error-msg" class="text-xs text-red-400 mt-2 text-center hidden"></p>
         </div>
         
-        <!-- Big Play Button Overlay -->
         <div id="big-play-panel" class="hidden text-center mt-6">
-            <button id="btn-big-play" class="text-7xl hover:scale-110 transition drop-shadow-[0_5px_15px_rgba(0,0,0,0.8)]">
+            <button id="btn-big-play" class="text-6xl md:text-7xl hover:scale-110 transition drop-shadow-[0_5px_15px_rgba(0,0,0,0.8)]">
                 <i class="fa-solid fa-circle-play text-blue-500 bg-white rounded-full leading-none"></i>
             </button>
         </div>
 
-        <!-- Loading Panel for Embed -->
         <div id="loading-panel" class="hidden text-center mt-6 flex-col items-center gap-3">
-            <i class="fa-solid fa-circle-notch fa-spin text-5xl text-blue-500 drop-shadow-[0_0_10px_rgba(0,0,0,0.8)]"></i>
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl md:text-5xl text-blue-500 drop-shadow-[0_0_10px_rgba(0,0,0,0.8)]"></i>
         </div>
     </div>
 
-    <!-- Kontrol Pemutaran Bawah -->
     <div id="controls-overlay">
-        <div class="flex items-center gap-6">
-            <button id="btn-play-pause" class="btn-icon text-3xl"><i class="fa-solid fa-pause"></i></button>
-            <span id="slide-counter" class="text-base font-semibold tracking-wider">1 / 1</span>
+        <!-- Gap disesuaikan agar rapi di layar kecil (gap-4 untuk mobile, gap-6 untuk PC) -->
+        <div class="flex items-center gap-4 md:gap-6">
+            <button id="btn-play-pause" class="btn-icon text-2xl md:text-3xl"><i class="fa-solid fa-pause"></i></button>
+            <span id="slide-counter" class="text-sm md:text-base font-semibold tracking-wider">1 / 1</span>
         </div>
-        <div class="flex items-center gap-6">
-            <button id="btn-prev" class="btn-icon text-2xl"><i class="fa-solid fa-backward-step"></i></button>
-            <button id="btn-next" class="btn-icon text-2xl transition-all duration-300"><i class="fa-solid fa-forward-step"></i></button>
-            <button id="btn-fullscreen" class="btn-icon text-2xl ml-4"><i class="fa-solid fa-expand"></i></button>
+        <div class="flex items-center gap-4 md:gap-6">
+            <button id="btn-prev" class="btn-icon text-xl md:text-2xl"><i class="fa-solid fa-backward-step"></i></button>
+            <button id="btn-next" class="btn-icon text-xl md:text-2xl transition-all duration-300"><i class="fa-solid fa-forward-step"></i></button>
+            <button id="btn-fullscreen" class="btn-icon text-xl md:text-2xl ml-2 md:ml-4"><i class="fa-solid fa-expand"></i></button>
         </div>
     </div>
 
@@ -204,9 +205,8 @@
     let progressInterval = null;
     
     let isEmbedMode = false;
-    let isQuizLocked = false; // Kunci keamanan slide jika dalam mode kuis
+    let isQuizLocked = false; 
 
-    // UI Elements
     const elContainer = document.getElementById('player-container');
     const elFrame = document.getElementById('slide-frame');
     const elStartOverlay = document.getElementById('start-overlay');
@@ -217,7 +217,6 @@
     const elBtnBigPlay = document.getElementById('btn-big-play');
     const elBtnNext = document.getElementById('btn-next');
     
-    // Tab Elements
     const tabUrl = document.getElementById('tab-url');
     const tabText = document.getElementById('tab-text');
     const tabFile = document.getElementById('tab-file');
@@ -226,7 +225,6 @@
     const panelFile = document.getElementById('panel-file');
     let activeInputMode = 'url';
 
-    // Kontrol Tab Switcher
     tabUrl.addEventListener('click', () => switchTab('url'));
     tabText.addEventListener('click', () => switchTab('text'));
     tabFile.addEventListener('click', () => switchTab('file'));
@@ -254,7 +252,6 @@
         }
     }
 
-    // --- PARAMETER URL ---
     const urlParams = new URLSearchParams(window.location.search);
     const jsonParam = urlParams.get('json');
     const ratioParam = urlParams.get('ratio');
@@ -265,7 +262,6 @@
     const isAutoplay = autoplayParam === '1' || autoplayParam === 'on' || autoplayParam === 'true';
     const isQuizMode = quizParam === '1' || quizParam === 'on' || quizParam === 'true';
 
-    // Set status embed jika parameter ada
     if (embedParam === '1') {
         isEmbedMode = true;
         document.getElementById('main-title').classList.add('hidden');
@@ -382,9 +378,12 @@
         <style>
             .absolute-full { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; }
             .flex-center { display: flex !important; align-items: center !important; justify-content: center !important; }
+            
+            /* Memaksa background menjadi hitam solid agar tidak putih saat iframe dirender */
             body { margin: 0; padding: 0; overflow: hidden !important; cursor: default; background-color: #000; width: 100vw; height: 100vh; }
-            /* Memastikan UI interaktif bisa diklik */
-            button, a, input { cursor: pointer; }
+            
+            /* Memastikan UI interaktif bisa diklik di HP maupun PC */
+            button, a, input, [onclick] { cursor: pointer; touch-action: manipulation; }
         </style>
         `;
         
@@ -512,18 +511,13 @@
 
     function resumeTimer() {
         if (isQuizLocked) {
-            // QUIZ MODE LOGIC:
-            // Jangan otomatis pindah slide. Hanya selesaikan durasi progress bar lalu berhenti.
             slideTimeout = setTimeout(() => {
                 isPlaying = false;
                 clearInterval(progressInterval);
                 document.getElementById('progress-bar').style.width = "100%";
                 updatePlayPauseIcon();
-                // Player sekarang standby. Iframe HTML (Kuis) akan mengambil alih.
             }, timeRemaining);
         } else {
-            // NORMAL MODE LOGIC:
-            // Otomatis pindah ke slide selanjutnya saat durasi habis
             slideTimeout = setTimeout(() => playSlide(currentSlideIndex + 1), timeRemaining);
         }
     }
@@ -578,16 +572,10 @@
 
     elBtnNext.addEventListener('click', () => {
         if (isQuizLocked) {
-            // Animasi penolakan / error visual karena kuis belum dijawab
-            elBtnNext.style.color = '#ef4444'; // merah
-            elBtnNext.style.transform = 'scale(1.3)';
-            elContainer.style.boxShadow = "0 0 40px rgba(239, 68, 68, 0.8)";
-            setTimeout(() => {
-                elBtnNext.style.color = '';
-                elBtnNext.style.transform = '';
-                elContainer.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
-            }, 400);
-            return; // BLOKIR KLIK NEXT
+            // Visual error animasi merah saat anak nakal pencet Next sebelum jawab kuis
+            elBtnNext.classList.add('btn-error');
+            setTimeout(() => elBtnNext.classList.remove('btn-error'), 400);
+            return;
         }
         if (currentSlideIndex < slides.length - 1) playSlide(currentSlideIndex + 1);
         else finishPresentation();
@@ -616,26 +604,21 @@
     }
 
     // --- PROTOKOL KOMUNIKASI (LISTENER DARI IFRAME KUIS) ---
-    let isTransitioning = false; // Mencegah double-trigger
+    let isTransitioning = false; 
 
     window.addEventListener('message', (event) => {
         if (!event.data) return;
         
-        // Membaca property 'action' atau 'type' dari JSON (Mendukung standar VibeCoder AI)
         const action = event.data.action || event.data.type;
-        
         const nextActions = ['nextSlide', 'NEXT_SCENE', 'QUIZ_START', 'QUIZ_CORRECT'];
         
         if (nextActions.includes(action)) {
-            isQuizLocked = false; // Buka kunci!
+            isQuizLocked = false; 
             updateControlsUI();
             
             if (isTransitioning) return;
             isTransitioning = true;
 
-            // Beri sedikit waktu (jeda) agar animasi tombol benar (warna hijau/scale) 
-            // di dalam iframe sempat terlihat oleh anak sebelum pindah slide.
-            // Jika action-nya QUIZ_CORRECT, beri jeda lebih lama (1.2 detik).
             let delayMs = (action === 'QUIZ_CORRECT') ? 1200 : 500; 
             
             setTimeout(() => {
@@ -653,13 +636,11 @@
                 playSlide(currentSlideIndex - 1);
             }
         } else if (action === 'QUIZ_WRONG') {
-            // Feedback visual (Glow Merah berkedip) di bingkai Player jika jawaban salah
             elContainer.style.boxShadow = "0 0 40px rgba(239, 68, 68, 0.8)";
             setTimeout(() => {
                 elContainer.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
             }, 500);
         } else if (action === 'LIKE_CLICKED' || action === 'SUBSCRIBE_CLICKED') {
-            // Bisa disambungkan ke Analytics API jika dibutuhkan
             console.log("User Clicked: ", action);
         }
     });
