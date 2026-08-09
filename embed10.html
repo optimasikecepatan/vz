@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Video JSON Player</title>
+    <!-- Tailwind CSS untuk styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { 
+            margin: 0; 
+            background-color: #111827; 
+            color: white; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            overflow: hidden; 
+            font-family: 'Inter', sans-serif; 
+        }
+        
+        #player-container {
+            position: relative;
+            background: #000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+            width: 100%;
+            max-width: 1280px;
+            aspect-ratio: 16 / 9; /* Default Landscape */
+            transition: aspect-ratio 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        #slide-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            position: absolute;
+            top: 0; left: 0;
+            background: #000;
+            pointer-events: auto; /* Membuka akses klik untuk kuis */
+        }
+
+        #controls-overlay {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+            pointer-events: none; 
+        }
+
+        #controls-overlay > div {
+            pointer-events: auto;
+        }
+
+        #player-container:hover #controls-overlay,
+        #controls-overlay.active {
+            opacity: 1;
+        }
+
+        #start-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            backdrop-filter: blur(5px);
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        #start-overlay.hidden {
+            display: none !important;
+        }
+
+        .btn-icon {
+            background: none; border: none; color: white; cursor: pointer;
+            transition: transform 0.2s, color 0.2s;
+            padding: 5px; /* Memperbesar area sentuh untuk HP */
+        }
+        .btn-icon:hover { color: #3b82f6; transform: scale(1.1); }
+        
+        /* State khusus saat tombol next dikunci oleh Kuis */
+        .btn-icon:disabled { opacity: 0.3; cursor: not-allowed; }
+        
+        /* Animasi peringatan jika tombol next dipaksa klik saat kuis */
+        @keyframes error-pulse {
+            0% { transform: scale(1); color: #ef4444; }
+            50% { transform: scale(1.3); color: #f87171; text-shadow: 0 0 15px rgba(239,68,68,0.8); }
+            100% { transform: scale(1); color: #ef4444; }
+        }
+        .btn-error { animation: error-pulse 0.4s ease-in-out; }
+
+        #progress-bar-container {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: rgba(255,255,255,0.2); z-index: 11;
+        }
+        #progress-bar {
+            height: 100%; width: 0%; background: #3b82f6; transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+
+<div id="player-container">
+    <iframe id="slide-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+
+    <div id="start-overlay">
+        <!-- Text diubah sedikit agar tidak kebesaran di HP -->
+        <h1 id="main-title" class="text-xl md:text-2xl font-bold mb-3 flex items-center gap-2 drop-shadow-lg text-center">
+            <i class="fa-solid fa-play-circle text-blue-500 text-2xl md:text-3xl"></i>
+            SaaS Video JSON Player
+        </h1>
+        
+        <div id="setup-panel" class="w-full max-w-lg bg-gray-800 p-4 md:p-6 rounded-lg shadow-lg border border-gray-700 text-left">
+            <div class="flex border-b border-gray-700 mb-4">
+                <button id="tab-url" class="flex-1 pb-2 font-semibold text-blue-400 border-b-2 border-blue-500 text-center transition text-sm md:text-base">URL / Link</button>
+                <button id="tab-text" class="flex-1 pb-2 font-semibold text-gray-400 text-center transition text-sm md:text-base">Text JSON</button>
+                <button id="tab-file" class="flex-1 pb-2 font-semibold text-gray-400 text-center transition text-sm md:text-base">Upload</button>
+            </div>
+
+            <div id="panel-url" class="space-y-3">
+                <label class="block text-xs text-gray-400">Masukkan URL JSON (ImageKit / Hosting Publik):</label>
+                <input type="text" id="json-url-input" class="w-full p-3 rounded bg-gray-900 border border-gray-600 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://ik.imagekit.io/.../data.json">
+            </div>
+
+            <div id="panel-text" class="space-y-3 hidden">
+                <label class="block text-xs text-gray-400">Paste kode JSON lengkap di bawah ini:</label>
+                <textarea id="json-text-input" rows="5" class="w-full p-3 rounded bg-gray-900 border border-gray-600 text-white text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder='{"slidesData": [...]}'></textarea>
+            </div>
+
+            <div id="panel-file" class="space-y-3 hidden">
+                <label class="block text-xs text-gray-400">Pilih file .json dari perangkat Anda:</label>
+                <input type="file" id="json-file-input" accept=".json" class="w-full p-2 rounded bg-gray-900 border border-gray-600 text-white text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer">
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-gray-700 flex items-center justify-between">
+                <span class="text-xs text-gray-400">Rasio:</span>
+                <div class="flex gap-3 md:gap-4 text-xs md:text-sm">
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="radio" name="ratio" value="16/9" checked class="accent-blue-500"> 16:9
+                    </label>
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="radio" name="ratio" value="9/16" class="accent-blue-500"> 9:16
+                    </label>
+                </div>
+            </div>
+
+            <button id="btn-load" class="w-full mt-5 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded transition shadow-lg text-sm md:text-base">
+                Load & Play Video
+            </button>
+            <p id="error-msg" class="text-xs text-red-400 mt-2 text-center hidden"></p>
+        </div>
+        
+        <div id="big-play-panel" class="hidden text-center mt-6">
+            <button id="btn-big-play" class="text-6xl md:text-7xl hover:scale-110 transition drop-shadow-[0_5px_15px_rgba(0,0,0,0.8)]">
+                <i class="fa-solid fa-circle-play text-blue-500 bg-white rounded-full leading-none"></i>
+            </button>
+        </div>
+
+        <div id="loading-panel" class="hidden text-center mt-6 flex-col items-center gap-3">
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl md:text-5xl text-blue-500 drop-shadow-[0_0_10px_rgba(0,0,0,0.8)]"></i>
+        </div>
+    </div>
+
+    <div id="controls-overlay">
+        <div class="flex items-center gap-4 md:gap-6">
+            <button id="btn-play-pause" class="btn-icon text-2xl md:text-3xl"><i class="fa-solid fa-pause"></i></button>
+            <span id="slide-counter" class="text-sm md:text-base font-semibold tracking-wider">1 / 1</span>
+        </div>
+        <div class="flex items-center gap-4 md:gap-6">
+            <button id="btn-prev" class="btn-icon text-xl md:text-2xl"><i class="fa-solid fa-backward-step"></i></button>
+            <!-- Tombol Next yang dikunci otomatis saat kuis -->
+            <button id="btn-next" class="btn-icon text-xl md:text-2xl transition-all duration-300"><i class="fa-solid fa-forward-step"></i></button>
+            <button id="btn-fullscreen" class="btn-icon text-xl md:text-2xl ml-2 md:ml-4"><i class="fa-solid fa-expand"></i></button>
+        </div>
+    </div>
+
+    <div id="progress-bar-container">
+        <div id="progress-bar"></div>
+    </div>
+</div>
+
+<script>
+    let presentationData = null;
+    let slides = [];
+    let assetMetadata = [];
+    let currentSlideIndex = 0;
+    
+    let currentVoAudio = null;
+    let currentSfxAudio = null;
+    
+    let isPlaying = false;
+    let slideTimeout = null;
+    let slideStartTime = 0;
+    let timeRemaining = 0;
+    let currentSlideTotalDuration = 0;
+    let progressInterval = null;
+    
+    let isEmbedMode = false;
+    let isQuizLocked = false; 
+
+    const elContainer = document.getElementById('player-container');
+    const elFrame = document.getElementById('slide-frame');
+    const elStartOverlay = document.getElementById('start-overlay');
+    const elBigPlayPanel = document.getElementById('big-play-panel');
+    const elSetupPanel = document.getElementById('setup-panel');
+    const elBtnLoad = document.getElementById('btn-load');
+    const elErrorMsg = document.getElementById('error-msg');
+    const elBtnBigPlay = document.getElementById('btn-big-play');
+    const elBtnNext = document.getElementById('btn-next');
+    
+    const tabUrl = document.getElementById('tab-url');
+    const tabText = document.getElementById('tab-text');
+    const tabFile = document.getElementById('tab-file');
+    const panelUrl = document.getElementById('panel-url');
+    const panelText = document.getElementById('panel-text');
+    const panelFile = document.getElementById('panel-file');
+    let activeInputMode = 'url';
+
+    tabUrl.addEventListener('click', () => switchTab('url'));
+    tabText.addEventListener('click', () => switchTab('text'));
+    tabFile.addEventListener('click', () => switchTab('file'));
+
+    function switchTab(mode) {
+        activeInputMode = mode;
+        [tabUrl, tabText, tabFile].forEach(t => {
+            t.classList.remove('text-blue-400', 'border-b-2', 'border-blue-500');
+            t.classList.add('text-gray-400');
+        });
+        [panelUrl, panelText, panelFile].forEach(p => p.classList.add('hidden'));
+
+        if(mode === 'url') {
+            tabUrl.classList.add('text-blue-400', 'border-b-2', 'border-blue-500');
+            tabUrl.classList.remove('text-gray-400');
+            panelUrl.classList.remove('hidden');
+        } else if(mode === 'text') {
+            tabText.classList.add('text-blue-400', 'border-b-2', 'border-blue-500');
+            tabText.classList.remove('text-gray-400');
+            panelText.classList.remove('hidden');
+        } else if(mode === 'file') {
+            tabFile.classList.add('text-blue-400', 'border-b-2', 'border-blue-500');
+            tabFile.classList.remove('text-gray-400');
+            panelFile.classList.remove('hidden');
+        }
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const jsonParam = urlParams.get('json');
+    const ratioParam = urlParams.get('ratio');
+    const embedParam = urlParams.get('embed');
+    const autoplayParam = urlParams.get('autoplay');
+    const quizParam = urlParams.get('quiz');
+    const mobileParam = urlParams.get('mobile'); 
+    const scaleParam = urlParams.get('scal'); // Parameter baru untuk applyScale
+    
+    const isAutoplay = autoplayParam === '1' || autoplayParam === 'on' || autoplayParam === 'true';
+    const isQuizMode = quizParam === '1' || quizParam === 'on' || quizParam === 'true';
+    const isMobileParamActive = mobileParam === '1' || mobileParam === 'on' || mobileParam === 'true' || mobileParam === 'auto';
+    const isScaleMode = scaleParam === '1' || scaleParam === 'on' || scaleParam === 'true';
+
+    if (embedParam === '1') {
+        isEmbedMode = true;
+        document.getElementById('main-title').classList.add('hidden');
+    }
+
+    // --- LOGIKA SMART AUTO-DETECT (PC vs HP) ---
+    if (isMobileParamActive) {
+        // Fungsi untuk menyesuaikan rasio otomatis berdasarkan ukuran layar saat ini
+        function autoAdjustRatio() {
+            // Jika lebar layar kurang dari atau sama dengan 768px, anggap sebagai layar HP (Mobile/Portrait)
+            const isMobileScreen = window.innerWidth <= 768; 
+            const newRatio = isMobileScreen ? '9/16' : '16/9';
+            
+            elContainer.style.aspectRatio = newRatio;
+            
+            // Sinkronisasi tombol radio di UI Setup (jika terlihat)
+            const radioTarget = document.querySelector(`input[name="ratio"][value="${newRatio}"]`);
+            if (radioTarget) radioTarget.checked = true;
+        }
+
+        // Panggil saat pertama kali load
+        autoAdjustRatio();
+        
+        // Panggil lagi JIKA user merotasi HP mereka (Orientasi berubah)
+        window.addEventListener('resize', autoAdjustRatio);
+
+    } else if (ratioParam) {
+        // Jika tidak pakai &mobile=on, patuhi parameter baku &ratio=...
+        const formattedRatio = ratioParam.replace(':', '/');
+        elContainer.style.aspectRatio = formattedRatio;
+        const radioRatio = document.querySelector(`input[name="ratio"][value="${formattedRatio}"]`);
+        if (radioRatio) radioRatio.checked = true;
+    }
+
+    if (jsonParam) {
+        document.getElementById('json-url-input').value = jsonParam;
+        if (isEmbedMode) {
+            elSetupPanel.classList.add('hidden');
+            document.getElementById('loading-panel').classList.remove('hidden');
+            loadDataFromUrl(jsonParam).catch(err => {
+                document.getElementById('loading-panel').innerHTML = `<p class="text-red-500 bg-black/70 p-2 rounded">Error: ${err.message}</p>`;
+            });
+        } else {
+            loadDataFromUrl(jsonParam);
+        }
+    }
+
+    elBtnLoad.addEventListener('click', async () => {
+        elErrorMsg.classList.add('hidden');
+        
+        // Cek rasio dari UI
+        const ratio = document.querySelector('input[name="ratio"]:checked').value;
+        elContainer.style.aspectRatio = ratio;
+
+        try {
+            if (activeInputMode === 'url') {
+                const url = document.getElementById('json-url-input').value.trim();
+                if (!url) throw new Error("URL JSON belum dimasukkan.");
+                await loadDataFromUrl(url);
+            } else if (activeInputMode === 'text') {
+                const textContent = document.getElementById('json-text-input').value.trim();
+                if (!textContent) throw new Error("Textarea JSON masih kosong.");
+                const parsed = JSON.parse(textContent);
+                parsePresentationData(parsed);
+            } else if (activeInputMode === 'file') {
+                const fileInput = document.getElementById('json-file-input');
+                if (!fileInput.files.length) throw new Error("Belum ada file .json yang dipilih.");
+                const fileText = await fileInput.files[0].text();
+                const parsed = JSON.parse(fileText);
+                parsePresentationData(parsed);
+            }
+        } catch (err) {
+            elErrorMsg.innerText = `Error: ${err.message}`;
+            elErrorMsg.classList.remove('hidden');
+        }
+    });
+
+    async function loadDataFromUrl(url) {
+        elBtnLoad.innerText = "Mengunduh...";
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Gagal mengambil data (HTTP ${response.status})`);
+        const data = await response.json();
+        parsePresentationData(data);
+    }
+
+    function parsePresentationData(data) {
+        presentationData = data;
+        slides = presentationData.slidesData || [];
+        assetMetadata = presentationData.uploadedAssetsMetadata || [];
+        
+        if (slides.length === 0) throw new Error("Data 'slidesData' kosong atau format JSON salah.");
+
+        showThumbnail();
+        document.getElementById('loading-panel').classList.add('hidden');
+
+        if (isEmbedMode && isAutoplay) {
+            elStartOverlay.style.display = 'none';
+            playSlide(0, true);
+        } else {
+            elSetupPanel.classList.add('hidden');
+            elBigPlayPanel.classList.remove('hidden');
+            elStartOverlay.style.display = 'flex';
+        }
+    }
+
+    function showThumbnail() {
+        if (slides.length > 0) {
+            let thumbHtml = processHtmlAssets(slides[0].htmlCode, assetMetadata);
+            thumbHtml = thumbHtml.replace(/<audio\b[^>]*>(.*?)<\/audio>/gi, '');
+            thumbHtml = thumbHtml.replace(/<audio\b[^>]*\/>/gi, '');
+            thumbHtml = thumbHtml.replace(/autoplay/gi, '');
+            elFrame.srcdoc = thumbHtml;
+            
+            elStartOverlay.style.background = 'rgba(0, 0, 0, 0.4)';
+            elStartOverlay.style.backdropFilter = 'none';
+        }
+    }
+
+    function processHtmlAssets(html, metadata) {
+        let processedHtml = html;
+        
+        if (metadata && metadata.length > 0) {
+            metadata.forEach((asset, i) => {
+                const baseId = `UPLOADED_ASSET_${i}`;
+                const primaryUrl = asset.url || asset.videoUrl;
+                if (primaryUrl) processedHtml = processedHtml.split(baseId).join(primaryUrl);
+                
+                if (asset.subFrames && Array.isArray(asset.subFrames)) {
+                    asset.subFrames.forEach((frame, j) => {
+                        const frameId = `${baseId}_FRAME_${j}`;
+                        processedHtml = processedHtml.split(frameId).join(frame.url);
+                    });
+                }
+            });
+        }
+        
+        // CSS Sangat Bersih. Hanya memastikan warna Background hitam dan layar penuh.
+        // Tidak ada lagi intervensi skala (scale/width), biarkan Tailwind/AI yang mengatur secara fluid.
+        let cssFix = `
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <style>
+            .absolute-full { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; }
+            .flex-center { display: flex !important; align-items: center !important; justify-content: center !important; }
+            .text-shadow-glow { text-shadow: 0 0 10px currentColor; }
+            
+            /* Paksa Body Hitam Pekat dan menutupi frame secara akurat */
+            body { margin: 0; padding: 0; overflow: hidden !important; cursor: default; background-color: #000; width: 100vw; height: 100vh; }
+            
+            /* Pastikan elemen klik interaktif (Kuis) dapat disentuh */
+            button, a, input, [onclick] { cursor: pointer; touch-action: manipulation; }
+        </style>
+        `;
+        
+        // JIKA parameter &scal=on dimasukkan, maka injeksikan script applyScale untuk iframe
+        if (isScaleMode) {
+            cssFix += `
+            <script>
+                function applyScale() {
+                    const w = window.innerWidth;
+                    const h = window.innerHeight;
+                    const isPortrait = h > w;
+                    // Disesuaikan untuk laptop 14 inci (1280x720) agar proporsional di PC Indo
+                    const baseW = isPortrait ? 720 : 1280;
+                    const baseH = isPortrait ? 1280 : 720;
+                    
+                    const scaleX = w / baseW;
+                    const scaleY = h / baseH;
+                    const scale = Math.min(scaleX, scaleY);
+                    
+                    document.body.style.width = baseW + 'px';
+                    document.body.style.height = baseH + 'px';
+                    document.body.style.transform = 'scale(' + scale + ')';
+                    document.body.style.transformOrigin = 'top left';
+                    
+                    const actualW = baseW * scale;
+                    const actualH = baseH * scale;
+                    document.body.style.position = 'absolute';
+                    document.body.style.left = '50%';
+                    document.body.style.top = '50%';
+                    document.body.style.marginLeft = -(actualW / 2) + 'px';
+                    document.body.style.marginTop = -(actualH / 2) + 'px';
+                }
+                window.addEventListener('resize', applyScale);
+                window.addEventListener('DOMContentLoaded', applyScale);
+                applyScale();
+            <\/script>
+            `;
+        }
+
+        if (processedHtml.includes('</head>')) {
+            processedHtml = processedHtml.replace('</head>', cssFix + '</head>');
+        } else {
+            processedHtml = cssFix + processedHtml;
+        }
+
+        return processedHtml;
+    }
+
+    elBtnBigPlay.addEventListener('click', () => {
+        elStartOverlay.style.display = 'none';
+        currentSlideIndex = 0;
+        playSlide(currentSlideIndex);
+    });
+
+    function stopCurrentSlide() {
+        if (currentVoAudio) { currentVoAudio.pause(); currentVoAudio.currentTime = 0; }
+        if (currentSfxAudio) { currentSfxAudio.pause(); currentSfxAudio.currentTime = 0; }
+        clearTimeout(slideTimeout);
+        clearInterval(progressInterval);
+        isPlaying = false;
+        document.getElementById('progress-bar').style.width = "0%";
+    }
+
+    function playSlide(index, isAutoplayAttempt = false) {
+        if (index < 0 || index >= slides.length) {
+            finishPresentation();
+            return;
+        }
+
+        stopCurrentSlide();
+        currentSlideIndex = index;
+        const slide = slides[index] || {};
+        
+        // KUNCI SLIDE JIKA MODE KUIS AKTIF / SLIDE INI ADALAH KUIS
+        isQuizLocked = isQuizMode || slide.isQuiz === true || slide.interactive === true;
+        updateControlsUI();
+
+        document.getElementById('slide-counter').innerText = `${index + 1} / ${slides.length}`;
+        isPlaying = true;
+        updatePlayPauseIcon();
+
+        const finalHtml = processHtmlAssets(slide.htmlCode, assetMetadata);
+        
+        const sfxMatch = finalHtml.match(/<audio\s+id="slideAudioSfx"\s+src=["']([^"']+)["']/i);
+        const sfxUrl = sfxMatch ? sfxMatch[1] : null;
+
+        let safeHtml = finalHtml.replace(/<audio\b[^>]*>(.*?)<\/audio>/gi, '');
+        safeHtml = safeHtml.replace(/<audio\b[^>]*\/>/gi, '');
+
+        const voUrl = slide.audioBlobUrl;
+        const extraPause = (slide.extraPauseSeconds || 0) * 1000;
+        let voDurationMs = 5000;
+
+        const startPlayback = (duration) => {
+            if (currentSlideIndex !== index || !isPlaying) return; 
+            
+            elFrame.srcdoc = safeHtml;
+
+            let audioPromises = [];
+
+            if (sfxUrl) {
+                currentSfxAudio = new Audio(sfxUrl);
+                currentSfxAudio.volume = 0.2;
+                currentSfxAudio.loop = true;
+                audioPromises.push(currentSfxAudio.play());
+            }
+            if (currentVoAudio) {
+                audioPromises.push(currentVoAudio.play());
+            }
+            
+            if (audioPromises.length > 0) {
+                Promise.all(audioPromises).then(() => {
+                    scheduleNextSlide(duration, extraPause);
+                }).catch(e => {
+                    console.warn("Audio autoplay policy block:", e);
+                    if (isAutoplayAttempt) {
+                        stopCurrentSlide();
+                        elBigPlayPanel.classList.remove('hidden');
+                        elStartOverlay.style.display = 'flex';
+                    } else {
+                        scheduleNextSlide(duration, extraPause);
+                    }
+                });
+            } else {
+                scheduleNextSlide(duration, extraPause);
+            }
+        };
+
+        if (voUrl) {
+            currentVoAudio = new Audio(voUrl);
+            currentVoAudio.onloadedmetadata = () => {
+                voDurationMs = (currentVoAudio.duration === Infinity ? 5 : currentVoAudio.duration) * 1000;
+                startPlayback(voDurationMs);
+            };
+            currentVoAudio.onerror = () => startPlayback(voDurationMs);
+        } else {
+            startPlayback(voDurationMs);
+        }
+    }
+
+    function scheduleNextSlide(voDurMs, extraPauseMs) {
+        currentSlideTotalDuration = voDurMs + extraPauseMs;
+        timeRemaining = currentSlideTotalDuration;
+        slideStartTime = Date.now();
+        
+        resumeTimer();
+        startProgressBar();
+    }
+
+    function updateControlsUI() {
+        if (isQuizLocked) {
+            elBtnNext.disabled = true; // Kunci tombol next
+        } else {
+            elBtnNext.disabled = false;
+        }
+    }
+
+    function resumeTimer() {
+        if (isQuizLocked) {
+            // Jika Quiz, slide hanya akan berjalan sampai audio/waktu habis, lalu berdiam diri menunggu interaksi.
+            slideTimeout = setTimeout(() => {
+                isPlaying = false;
+                clearInterval(progressInterval);
+                document.getElementById('progress-bar').style.width = "100%";
+                updatePlayPauseIcon();
+                
+                // Hentikan SFX dan VO ketika slide otomatis berhenti (menunggu klik kuis)
+                if (currentVoAudio) currentVoAudio.pause();
+                if (currentSfxAudio) currentSfxAudio.pause();
+                
+                // Pause video yang ada di dalam iframe agar tidak ikut lanjut jalan
+                try {
+                    const ifrDoc = elFrame.contentDocument || elFrame.contentWindow.document;
+                    ifrDoc.querySelectorAll('video').forEach(v => v.pause());
+                } catch(e){}
+                
+            }, timeRemaining);
+        } else {
+            slideTimeout = setTimeout(() => playSlide(currentSlideIndex + 1), timeRemaining);
+        }
+    }
+
+    function startProgressBar() {
+        clearInterval(progressInterval);
+        progressInterval = setInterval(() => {
+            if (!isPlaying) return;
+            const elapsed = Date.now() - slideStartTime;
+            let currentProgMs = (currentSlideTotalDuration - timeRemaining) + elapsed;
+            let percentage = (currentProgMs / currentSlideTotalDuration) * 100;
+            if (percentage > 100) percentage = 100;
+            document.getElementById('progress-bar').style.width = percentage + "%";
+        }, 50);
+    }
+
+    const elBtnPlayPause = document.getElementById('btn-play-pause');
+    elBtnPlayPause.addEventListener('click', () => {
+        if (!presentationData) return;
+        if (isPlaying) {
+            isPlaying = false;
+            clearTimeout(slideTimeout);
+            clearInterval(progressInterval);
+            timeRemaining -= (Date.now() - slideStartTime);
+            if (currentVoAudio) currentVoAudio.pause();
+            if (currentSfxAudio) currentSfxAudio.pause();
+            
+            try {
+                const ifrDoc = elFrame.contentDocument || elFrame.contentWindow.document;
+                ifrDoc.querySelectorAll('video').forEach(v => v.pause());
+            } catch(e){}
+            
+        } else {
+            isPlaying = true;
+            slideStartTime = Date.now();
+            resumeTimer();
+            startProgressBar();
+            if (currentVoAudio) currentVoAudio.play();
+            if (currentSfxAudio) currentSfxAudio.play();
+
+            try {
+                const ifrDoc = elFrame.contentDocument || elFrame.contentWindow.document;
+                ifrDoc.querySelectorAll('video').forEach(v => v.play());
+            } catch(e){}
+        }
+        updatePlayPauseIcon();
+    });
+
+    function updatePlayPauseIcon() {
+        elBtnPlayPause.innerHTML = isPlaying ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>';
+    }
+
+    elBtnNext.addEventListener('click', () => {
+        if (isQuizLocked) {
+            // Visual error animasi merah saat anak nakal pencet Next sebelum jawab kuis
+            elBtnNext.classList.add('btn-error');
+            setTimeout(() => elBtnNext.classList.remove('btn-error'), 400);
+            return; // BLOKIR!
+        }
+        if (currentSlideIndex < slides.length - 1) playSlide(currentSlideIndex + 1);
+        else finishPresentation();
+    });
+
+    document.getElementById('btn-prev').addEventListener('click', () => {
+        if (currentSlideIndex > 0) playSlide(currentSlideIndex - 1);
+        else playSlide(0);
+    });
+
+    const elBtnFullscreen = document.getElementById('btn-fullscreen');
+    elBtnFullscreen.addEventListener('click', () => {
+        if (!document.fullscreenElement) elContainer.requestFullscreen().catch(err => {});
+        else document.exitFullscreen();
+    });
+
+    document.addEventListener('fullscreenchange', () => {
+        elBtnFullscreen.innerHTML = document.fullscreenElement ? '<i class="fa-solid fa-compress"></i>' : '<i class="fa-solid fa-expand"></i>';
+    });
+
+    function finishPresentation() {
+        stopCurrentSlide();
+        document.getElementById('progress-bar').style.width = "100%";
+        elBtnPlayPause.innerHTML = '<i class="fa-solid fa-rotate-right"></i>';
+        elBtnPlayPause.onclick = () => { location.reload(); };
+    }
+
+    // --- PROTOKOL KOMUNIKASI (LISTENER DARI IFRAME KUIS) ---
+    let isTransitioning = false; // Mencegah klik double memicu skip 2 slide
+
+    window.addEventListener('message', (event) => {
+        if (!event.data) return;
+        
+        const action = event.data.action || event.data.type;
+        const nextActions = ['nextSlide', 'NEXT_SCENE', 'QUIZ_START', 'QUIZ_CORRECT'];
+        
+        if (nextActions.includes(action)) {
+            // Buka gembok karena user menjawab benar/mengklik mulai
+            isQuizLocked = false; 
+            updateControlsUI();
+            
+            if (isTransitioning) return;
+            isTransitioning = true;
+
+            // Beri JEDA WAKTU (Delay) agar animasi/suara Quiz Correct di dalam Iframe sempat berputar
+            // 1200ms = 1.2 Detik memberikan ruang buat tombol berubah jadi hijau sebelum pindah slide
+            let delayMs = (action === 'QUIZ_CORRECT') ? 1200 : 500; 
+            
+            setTimeout(() => {
+                if (currentSlideIndex < slides.length - 1) {
+                    playSlide(currentSlideIndex + 1);
+                } else {
+                    finishPresentation();
+                }
+                isTransitioning = false;
+            }, delayMs);
+            
+        } else if (['prevSlide', 'PREV_SCENE'].includes(action)) {
+            if (isTransitioning) return;
+            if (currentSlideIndex > 0) {
+                playSlide(currentSlideIndex - 1);
+            }
+        } else if (action === 'QUIZ_WRONG') {
+            // Visual Penalty: Player memancarkan cahaya merah jika jawaban salah!
+            elContainer.style.boxShadow = "0 0 40px rgba(239, 68, 68, 0.8)";
+            setTimeout(() => {
+                elContainer.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
+            }, 500);
+        } else if (action === 'LIKE_CLICKED' || action === 'SUBSCRIBE_CLICKED') {
+            console.log("User Clicked: ", action);
+        }
+    });
+
+</script>
+</body>
+</html>
