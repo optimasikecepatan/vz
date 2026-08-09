@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Video JSON Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #111827; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; font-family: 'Inter', sans-serif; }
+        #player-container { position: relative; width: 100%; max-width: 1200px; aspect-ratio: 16/9; background: #000; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-radius: 8px; }
+        #slide-frame { width: 100%; height: 100%; border: none; }
+        
+        /* Overlay UI */
+        #start-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17, 24, 39, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 20; backdrop-filter: blur(5px); }
+        #big-play-panel { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.7); z-index: 10; cursor: pointer; }
+        
+        /* Progress Bar */
+        #progress-container { position: absolute; bottom: 0; left: 0; width: 100%; height: 6px; background: rgba(255,255,255,0.2); z-index: 30; }
+        #progress-bar { height: 100%; background: #3b82f6; width: 0%; transition: width 0.1s linear; }
+        
+        /* Hide scrollbar untuk panel input */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <div id="player-container">
+        <!-- Iframe untuk render HTML visual per-slide -->
+        <iframe id="slide-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+
+        <!-- Progress Bar (tersembunyi saat awal) -->
+        <div id="progress-container" class="hidden">
+            <div id="progress-bar"></div>
+        </div>
+
+        <!-- Overlay Dashboard / Setup -->
+        <div id="start-overlay">
+            <h1 id="main-title" class="text-2xl font-bold mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-play-circle text-blue-500 text-3xl"></i>
+                SaaS Video JSON Player
+            </h1>
+            
+            <div id="setup-panel" class="w-full max-w-lg bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 text-left relative">
+                
+                <!-- Tab Pilihan -->
+                <div class="flex border-b border-gray-700 mb-4 overflow-x-auto whitespace-nowrap">
+                    <button id="tab-url" class="flex-1 pb-2 px-2 font-semibold text-blue-400 border-b-2 border-blue-500 text-center transition">URL / Link</button>
+                    <button id="tab-text" class="flex-1 pb-2 px-2 font-semibold text-gray-400 text-center transition">Paste JSON</button>
+                    <button id="tab-file" class="flex-1 pb-2 px-2 font-semibold text-gray-400 text-center transition">Upload File</button>
+                    <button id="tab-embed" class="flex-1 pb-2 px-2 font-semibold text-purple-400 text-center transition"><i class="fa-solid fa-code"></i> Embed</button>
+                </div>
+
+                <!-- Panel Input URL -->
+                <div id="panel-url" class="space-y-3">
+                    <label class="block text-xs text-gray-400">Masukkan URL file JSON video Anda:</label>
+                    <input type="text" id="json-url-input" class="w-full p-3 rounded bg-gray-900 border border-gray-600 text-white text-sm outline-none focus:border-blue-500 transition" placeholder="https://contoh.com/data/video1.json">
+                </div>
+
+                <!-- Panel Text / Paste JSON -->
+                <div id="panel-text" class="space-y-3 hidden">
+                    <label class="block text-xs text-gray-400">Paste kode JSON di sini:</label>
+                    <textarea id="json-text-input" rows="5" class="w-full p-3 rounded bg-gray-900 border border-gray-600 text-white text-xs font-mono outline-none focus:border-blue-500 transition" placeholder='{ "slides": [ ... ] }'></textarea>
+                </div>
+
+                <!-- Panel Upload File -->
+                <div id="panel-file" class="space-y-3 hidden">
+                    <label class="block text-xs text-gray-400">Pilih file .json dari perangkat Anda:</label>
+                    <input type="file" id="json-file-input" accept=".json" class="w-full p-2 rounded bg-gray-900 border border-gray-600 text-white text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer">
+                </div>
+
+                <!-- Panel Embed Generator -->
+                <div id="panel-embed" class="space-y-3 hidden">
+                    <p class="text-xs text-gray-300 mb-2">Buat kode embed untuk dipasang di website Anda (Konsep YouTube iframe).</p>
+                    <div class="space-y-2">
+                        <label class="block text-xs text-gray-400">1. Base URL Player (URL Halaman Ini):</label>
+                        <input type="text" id="embed-player-url" class="w-full p-2 rounded bg-gray-900 border border-gray-600 text-white text-xs outline-none">
+                        
+                        <label class="block text-xs text-gray-400">2. URL JSON Video yang akan di-play:</label>
+                        <input type="text" id="embed-json-url" class="w-full p-2 rounded bg-gray-900 border border-gray-600 text-white text-xs outline-none" placeholder="https://domain.com/file.json">
+                    </div>
+                    
+                    <div class="mt-2 p-3 bg-black rounded border border-gray-700 relative">
+                        <span class="absolute top-1 right-2 text-[10px] text-gray-500">Iframe Code</span>
+                        <textarea id="embed-result" readonly rows="4" class="w-full bg-transparent text-green-400 text-xs font-mono outline-none resize-none cursor-text"></textarea>
+                    </div>
+                    <button id="btn-copy-embed" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded transition text-sm">
+                        <i class="fa-solid fa-copy mr-1"></i> Copy Embed Code
+                    </button>
+                </div>
+
+                <!-- Kontrol Rasio & Tombol Load -->
+                <div id="form-controls-container">
+                    <div class="mt-4 pt-3 border-t border-gray-700 flex items-center justify-between">
+                        <span class="text-xs text-gray-400">Format Rasio Video:</span>
+                        <div class="flex gap-4 text-sm">
+                            <label class="flex items-center gap-1.5 cursor-pointer">
+                                <input type="radio" name="ratio" value="16/9" checked class="accent-blue-500"> Landscape (16:9)
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer">
+                                <input type="radio" name="ratio" value="9/16" class="accent-blue-500"> Portrait (9:16)
+                            </label>
+                        </div>
+                    </div>
+                    <button id="btn-load" class="w-full mt-5 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded transition shadow-lg">
+                        Load Data
+                    </button>
+                </div>
+                <p id="error-msg" class="text-xs text-red-400 mt-3 text-center hidden"></p>
+            </div>
+        </div>
+        
+        <!-- Big Play Button Overlay (Muncul setelah data dimuat / di mode embed) -->
+        <div id="big-play-panel" class="hidden">
+            <button id="btn-big-play" class="w-20 h-20 bg-blue-600 hover:bg-blue-500 rounded-full flex justify-center items-center text-white shadow-[0_0_20px_rgba(59,130,246,0.6)] transition transform hover:scale-110">
+                <i class="fa-solid fa-play text-3xl ml-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // State Variabel Player
+        let videoData = null;
+        let currentSlideIndex = 0;
+        let isPlaying = false;
+        let slideTimer = null;
+        let progressInterval = null;
+        let currentSlideStartTime = 0;
+        let currentSlideDuration = 0;
+        let currentAudio = null;
+
+        // Elemen UI
+        const elContainer = document.getElementById('player-container');
+        const elFrame = document.getElementById('slide-frame');
+        const elStartOverlay = document.getElementById('start-overlay');
+        const elMainTitle = document.getElementById('main-title');
+        const elSetupPanel = document.getElementById('setup-panel');
+        const elBigPlayPanel = document.getElementById('big-play-panel');
+        const elBtnBigPlay = document.getElementById('btn-big-play');
+        const elBtnLoad = document.getElementById('btn-load');
+        const elErrorMsg = document.getElementById('error-msg');
+        const elProgressContainer = document.getElementById('progress-container');
+        const elProgressBar = document.getElementById('progress-bar');
+        const formControlsContainer = document.getElementById('form-controls-container');
+
+        // Elemen Tab
+        const tabs = ['url', 'text', 'file', 'embed'];
+        let activeInputMode = 'url';
+
+        // --- SISTEM TAB SWITCHER ---
+        tabs.forEach(mode => {
+            document.getElementById(`tab-${mode}`).addEventListener('click', () => switchTab(mode));
+        });
+
+        function switchTab(mode) {
+            activeInputMode = mode;
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                const panel = document.getElementById(`panel-${t}`);
+                btn.classList.remove('text-blue-400', 'text-purple-400', 'border-b-2', 'border-blue-500', 'border-purple-500');
+                btn.classList.add('text-gray-400');
+                panel.classList.add('hidden');
+            });
+
+            formControlsContainer.style.display = mode === 'embed' ? 'none' : 'block';
+            
+            const activeBtn = document.getElementById(`tab-${mode}`);
+            const activePanel = document.getElementById(`panel-${mode}`);
+            
+            activePanel.classList.remove('hidden');
+            if(mode === 'embed') {
+                activeBtn.classList.add('text-purple-400', 'border-b-2', 'border-purple-500');
+                generateEmbedCode();
+            } else {
+                activeBtn.classList.add('text-blue-400', 'border-b-2', 'border-blue-500');
+            }
+        }
+
+        // --- SISTEM GENERATOR EMBED ---
+        const inputEmbedPlayer = document.getElementById('embed-player-url');
+        const inputEmbedJson = document.getElementById('embed-json-url');
+        const inputEmbedResult = document.getElementById('embed-result');
+        const btnCopyEmbed = document.getElementById('btn-copy-embed');
+
+        function generateEmbedCode() {
+            // Ambil URL saat ini tanpa parameter sebagai base URL
+            let playerUrl = inputEmbedPlayer.value.trim();
+            if (!playerUrl) {
+                playerUrl = window.location.href.split('?')[0];
+                inputEmbedPlayer.value = playerUrl;
+            }
+            const jsonUrl = inputEmbedJson.value.trim() || "URL_FILE_JSON_ANDA_DISINI";
+            const ratio = document.querySelector('input[name="ratio"]:checked').value;
+            
+            // Generate Iframe
+            const iframeCode = `<iframe src="${playerUrl}?json=${encodeURIComponent(jsonUrl)}&ratio=${encodeURIComponent(ratio)}&embed=1" width="100%" height="100%" style="border: none; aspect-ratio: ${ratio}; max-width: 100%;" allow="autoplay; fullscreen" allowfullscreen></iframe>`;
+            inputEmbedResult.value = iframeCode;
+        }
+
+        inputEmbedPlayer.addEventListener('input', generateEmbedCode);
+        inputEmbedJson.addEventListener('input', generateEmbedCode);
+        document.querySelectorAll('input[name="ratio"]').forEach(r => r.addEventListener('change', () => {
+            if (activeInputMode === 'embed') generateEmbedCode();
+        }));
+
+        btnCopyEmbed.addEventListener('click', () => {
+            inputEmbedResult.select();
+            document.execCommand('copy');
+            const originalText = btnCopyEmbed.innerHTML;
+            btnCopyEmbed.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Tersalin!';
+            setTimeout(() => btnCopyEmbed.innerHTML = originalText, 2000);
+        });
+
+        // --- CEK URL PARAMETER (UNTUK MODE WIDGET/EMBED OTOMATIS) ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const paramJson = urlParams.get('json');
+        const paramRatio = urlParams.get('ratio');
+        const isEmbedMode = urlParams.get('embed') === '1';
+
+        if (paramRatio) {
+            elContainer.style.aspectRatio = paramRatio;
+            const radioToSelect = document.querySelector(`input[name="ratio"][value="${paramRatio}"]`);
+            if (radioToSelect) radioToSelect.checked = true;
+        }
+
+        if (paramJson) {
+            document.getElementById('json-url-input').value = paramJson;
+            document.getElementById('embed-json-url').value = paramJson;
+            
+            if (isEmbedMode) {
+                // Jika mode embed, Sembunyikan panel setup, langsung load background hitam
+                elSetupPanel.classList.add('hidden');
+                elMainTitle.classList.add('hidden');
+                elStartOverlay.style.background = 'black'; // Biar elegan di embed
+                loadDataFromUrl(paramJson);
+            }
+        }
+
+        // --- LOGIKA LOAD DATA ---
+        function showError(msg) {
+            elErrorMsg.textContent = msg;
+            elErrorMsg.classList.remove('hidden');
+            elBtnLoad.textContent = 'Load Data';
+            elBtnLoad.disabled = false;
+        }
+
+        elBtnLoad.addEventListener('click', async () => {
+            elErrorMsg.classList.add('hidden');
+            elBtnLoad.textContent = 'Loading...';
+            elBtnLoad.disabled = true;
+
+            const ratio = document.querySelector('input[name="ratio"]:checked').value;
+            elContainer.style.aspectRatio = ratio;
+
+            try {
+                if (activeInputMode === 'url') {
+                    const url = document.getElementById('json-url-input').value;
+                    if(!url) throw new Error("URL tidak boleh kosong");
+                    await loadDataFromUrl(url);
+                } else if (activeInputMode === 'text') {
+                    const text = document.getElementById('json-text-input').value;
+                    if(!text) throw new Error("JSON teks tidak boleh kosong");
+                    videoData = JSON.parse(text);
+                    preparePlayer();
+                } else if (activeInputMode === 'file') {
+                    const fileInput = document.getElementById('json-file-input');
+                    if(fileInput.files.length === 0) throw new Error("Pilih file terlebih dahulu");
+                    const file = fileInput.files[0];
+                    const text = await file.text();
+                    videoData = JSON.parse(text);
+                    preparePlayer();
+                }
+            } catch (err) {
+                showError("Gagal: " + err.message);
+            }
+        });
+
+        async function loadDataFromUrl(url) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error("Gagal mengambil data dari URL");
+                videoData = await response.json();
+                preparePlayer();
+            } catch (err) {
+                if(isEmbedMode) {
+                    elSetupPanel.classList.remove('hidden'); // Munculkan error jika embed gagal
+                    showError("Error Load Embed: " + err.message);
+                } else {
+                    showError(err.message);
+                }
+            }
+        }
+
+        function preparePlayer() {
+            if (!videoData || !videoData.slides || videoData.slides.length === 0) {
+                showError("JSON tidak valid atau tidak memiliki data slides.");
+                return;
+            }
+            // Sembunyikan setup, munculkan Big Play
+            elStartOverlay.classList.add('hidden');
+            elBigPlayPanel.classList.remove('hidden');
+            
+            // Reset state
+            currentSlideIndex = 0;
+            elBtnLoad.textContent = 'Load Data';
+            elBtnLoad.disabled = false;
+        }
+
+        // --- CORE ENGINE PLAYER ---
+        elBigPlayPanel.addEventListener('click', () => {
+            elBigPlayPanel.classList.add('hidden');
+            elProgressContainer.classList.remove('hidden');
+            isPlaying = true;
+            playSlide(0);
+        });
+
+        function playSlide(index) {
+            if (index >= videoData.slides.length) {
+                endVideo();
+                return;
+            }
+
+            const slide = videoData.slides[index];
+            currentSlideDuration = slide.duration || 5000;
+            
+            // INJEKSI CSS PENTING (POLYFILL)
+            // Menambahkan .absolute-full dan styling dasar agar animasi kinetik HTML muncul
+            let rawHtml = slide.html || '';
+            const polyfillCss = `
+                <style>
+                    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: sans-serif; }
+                    .absolute-full { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+                    /* Tambahkan fallback animasi jika dibutuhkan */
+                    * { box-sizing: border-box; }
+                </style>
+            `;
+            const finalHtml = polyfillCss + rawHtml;
+
+            // SINKRONISASI AUDIO & VISUAL
+            if (slide.voiceover_url) {
+                currentAudio = new Audio(slide.voiceover_url);
+                
+                // Tunggu sampai audio selesai dimuat (bisa diputar)
+                currentAudio.oncanplaythrough = () => {
+                    if(!isPlaying) return;
+                    elFrame.srcdoc = finalHtml; // Render HTML ke Iframe SEKARANG (Animasi CSS mulai)
+                    currentAudio.play();        // Putar suara berbarengan
+                    startSlideTimer(currentSlideDuration, index);
+                    
+                    // Bersihkan event untuk hindari memory leak
+                    currentAudio.oncanplaythrough = null;
+                };
+
+                // Fallback jika audio gagal di-load
+                currentAudio.onerror = () => {
+                    console.warn("Gagal memuat audio:", slide.voiceover_url);
+                    elFrame.srcdoc = finalHtml;
+                    startSlideTimer(currentSlideDuration, index);
+                };
+                
+                currentAudio.load(); // Paksa browser memuat
+            } else {
+                // Jika tidak ada audio, langsung render dan mulai timer
+                elFrame.srcdoc = finalHtml;
+                startSlideTimer(currentSlideDuration, index);
+            }
+        }
+
+        function startSlideTimer(durationMs, index) {
+            clearTimeout(slideTimer);
+            clearInterval(progressInterval);
+            
+            currentSlideStartTime = Date.now();
+            
+            // Update Progress Bar
+            progressInterval = setInterval(() => {
+                if(!isPlaying) return;
+                const elapsed = Date.now() - currentSlideStartTime;
+                let percent = (elapsed / durationMs) * 100;
+                if(percent > 100) percent = 100;
+                elProgressBar.style.width = percent + '%';
+            }, 30); // 30ms biar smooth
+
+            // Lanjut ke slide berikutnya
+            slideTimer = setTimeout(() => {
+                if(isPlaying) {
+                    currentSlideIndex++;
+                    playSlide(currentSlideIndex);
+                }
+            }, durationMs);
+        }
+
+        function endVideo() {
+            isPlaying = false;
+            clearInterval(progressInterval);
+            clearTimeout(slideTimer);
+            elProgressBar.style.width = '100%';
+            
+            // Kembalikan tombol Big Play dan kosongkan iframe
+            setTimeout(() => {
+                elFrame.srcdoc = '';
+                elProgressContainer.classList.add('hidden');
+                elProgressBar.style.width = '0%';
+                
+                if(isEmbedMode) {
+                    // Jika embed, panggil ulang background hitam saja
+                    elBigPlayPanel.classList.remove('hidden');
+                } else {
+                    // Jika dashboard, panggil ulang dashboard
+                    elStartOverlay.classList.remove('hidden');
+                    elMainTitle.classList.remove('hidden');
+                    elSetupPanel.classList.remove('hidden');
+                }
+                currentSlideIndex = 0;
+            }, 500);
+        }
+    </script>
+</body>
+</html>
