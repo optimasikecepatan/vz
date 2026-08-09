@@ -9,7 +9,17 @@
     <!-- FontAwesome Icon -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { margin: 0; background-color: #111827; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; font-family: 'Inter', sans-serif; }
+        body { 
+            margin: 0; 
+            background-color: #111827; 
+            color: white; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            overflow: hidden; 
+            font-family: 'Inter', sans-serif; 
+        }
         
         #player-container {
             position: relative;
@@ -19,7 +29,7 @@
             width: 100%;
             max-width: 1280px;
             aspect-ratio: 16 / 9; /* Default Landscape */
-            transition: aspect-ratio 0.3s ease;
+            transition: aspect-ratio 0.3s ease, box-shadow 0.3s ease;
         }
 
         #slide-frame {
@@ -36,7 +46,7 @@
         #controls-overlay {
             position: absolute;
             bottom: 0; left: 0; right: 0;
-            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
             padding: 20px;
             display: flex;
             align-items: center;
@@ -80,6 +90,7 @@
             transition: transform 0.2s, color 0.2s;
         }
         .btn-icon:hover { color: #3b82f6; transform: scale(1.1); }
+        .btn-icon:disabled { opacity: 0.3; cursor: not-allowed; }
         
         #progress-bar-container {
             position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: rgba(255,255,255,0.2); z-index: 11;
@@ -166,7 +177,7 @@
         </div>
         <div class="flex items-center gap-6">
             <button id="btn-prev" class="btn-icon text-2xl"><i class="fa-solid fa-backward-step"></i></button>
-            <button id="btn-next" class="btn-icon text-2xl"><i class="fa-solid fa-forward-step"></i></button>
+            <button id="btn-next" class="btn-icon text-2xl transition-all duration-300"><i class="fa-solid fa-forward-step"></i></button>
             <button id="btn-fullscreen" class="btn-icon text-2xl ml-4"><i class="fa-solid fa-expand"></i></button>
         </div>
     </div>
@@ -191,6 +202,7 @@
     let timeRemaining = 0;
     let currentSlideTotalDuration = 0;
     let progressInterval = null;
+    
     let isEmbedMode = false;
     let isQuizLocked = false; // Kunci keamanan slide jika dalam mode kuis
 
@@ -203,6 +215,7 @@
     const elBtnLoad = document.getElementById('btn-load');
     const elErrorMsg = document.getElementById('error-msg');
     const elBtnBigPlay = document.getElementById('btn-big-play');
+    const elBtnNext = document.getElementById('btn-next');
     
     // Tab Elements
     const tabUrl = document.getElementById('tab-url');
@@ -363,48 +376,16 @@
             });
         }
         
+        // CSS Sederhana, mengembalikan sifat responsif native milik iframe
         const cssFix = `
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <style>
             .absolute-full { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; }
-            .w-screen { width: 100% !important; } 
-            .h-screen { height: 100% !important; }
             .flex-center { display: flex !important; align-items: center !important; justify-content: center !important; }
-            .text-shadow-glow { text-shadow: 0 0 10px currentColor; }
-            body { margin: 0; overflow: hidden !important; cursor: default; }
-            
-            /* UI Interaktif untuk Kuis (Misal tombol jawaban) */
-            button { cursor: pointer; }
+            body { margin: 0; padding: 0; overflow: hidden !important; cursor: default; background-color: #000; width: 100vw; height: 100vh; }
+            /* Memastikan UI interaktif bisa diklik */
+            button, a, input { cursor: pointer; }
         </style>
-        <script>
-            function applyScale() {
-                const w = window.innerWidth;
-                const h = window.innerHeight;
-                const isPortrait = h > w;
-                const baseW = isPortrait ? 1080 : 1920;
-                const baseH = isPortrait ? 1920 : 1080;
-                
-                const scaleX = w / baseW;
-                const scaleY = h / baseH;
-                const scale = Math.min(scaleX, scaleY);
-                
-                document.body.style.width = baseW + 'px';
-                document.body.style.height = baseH + 'px';
-                document.body.style.transform = 'scale(' + scale + ')';
-                document.body.style.transformOrigin = 'top left';
-                
-                const actualW = baseW * scale;
-                const actualH = baseH * scale;
-                document.body.style.position = 'absolute';
-                document.body.style.left = '50%';
-                document.body.style.top = '50%';
-                document.body.style.marginLeft = -(actualW / 2) + 'px';
-                document.body.style.marginTop = -(actualH / 2) + 'px';
-            }
-            window.addEventListener('resize', applyScale);
-            window.addEventListener('DOMContentLoaded', applyScale);
-            applyScale();
-        <\/script>
         `;
         
         if (processedHtml.includes('</head>')) {
@@ -518,13 +499,14 @@
     }
 
     function updateControlsUI() {
-        const btnNext = document.getElementById('btn-next');
         if (isQuizLocked) {
-            btnNext.style.opacity = '0.3';
-            btnNext.style.cursor = 'not-allowed';
+            elBtnNext.style.opacity = '0.3';
+            elBtnNext.style.cursor = 'not-allowed';
+            elBtnNext.disabled = true;
         } else {
-            btnNext.style.opacity = '1';
-            btnNext.style.cursor = 'pointer';
+            elBtnNext.style.opacity = '1';
+            elBtnNext.style.cursor = 'pointer';
+            elBtnNext.disabled = false;
         }
     }
 
@@ -537,8 +519,7 @@
                 clearInterval(progressInterval);
                 document.getElementById('progress-bar').style.width = "100%";
                 updatePlayPauseIcon();
-                // Player sekarang standby. Iframe HTML (Kuis) akan mengambil alih, 
-                // menunggu user menjawab pertanyaan.
+                // Player sekarang standby. Iframe HTML (Kuis) akan mengambil alih.
             }, timeRemaining);
         } else {
             // NORMAL MODE LOGIC:
@@ -595,16 +576,15 @@
         elBtnPlayPause.innerHTML = isPlaying ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>';
     }
 
-    document.getElementById('btn-next').addEventListener('click', () => {
+    elBtnNext.addEventListener('click', () => {
         if (isQuizLocked) {
             // Animasi penolakan / error visual karena kuis belum dijawab
-            const btnNext = document.getElementById('btn-next');
-            btnNext.style.color = '#ef4444'; // merah
-            btnNext.style.transform = 'scale(1.3)';
+            elBtnNext.style.color = '#ef4444'; // merah
+            elBtnNext.style.transform = 'scale(1.3)';
             elContainer.style.boxShadow = "0 0 40px rgba(239, 68, 68, 0.8)";
             setTimeout(() => {
-                btnNext.style.color = '';
-                btnNext.style.transform = '';
+                elBtnNext.style.color = '';
+                elBtnNext.style.transform = '';
                 elContainer.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
             }, 400);
             return; // BLOKIR KLIK NEXT
@@ -636,8 +616,7 @@
     }
 
     // --- PROTOKOL KOMUNIKASI (LISTENER DARI IFRAME KUIS) ---
-    // Menerima perintah dari dalam Iframe (saat tombol jawaban benar diklik)
-    let isTransitioning = false; // Mencegah double-trigger jika iframe mengirim banyak pesan sekaligus
+    let isTransitioning = false; // Mencegah double-trigger
 
     window.addEventListener('message', (event) => {
         if (!event.data) return;
